@@ -1,0 +1,95 @@
+{
+    "eventVersion": "1.09",
+    "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAUQSO5F4QQQF7KJTPW:AWSCloudFormation",
+        "arn": "arn:aws:sts::310476877601:assumed-role/cdk-hnb659fds-cfn-exec-role-310476877601-us-east-1/AWSCloudFormation",
+        "accountId": "310476877601",
+        "accessKeyId": "ASIAUQSO5F4Q5ZJLWYOU",
+        "sessionContext": {
+            "sessionIssuer": {
+                "type": "Role",
+                "principalId": "AROAUQSO5F4QQQF7KJTPW",
+                "arn": "arn:aws:iam::310476877601:role/cdk-hnb659fds-cfn-exec-role-310476877601-us-east-1",
+                "accountId": "310476877601",
+                "userName": "cdk-hnb659fds-cfn-exec-role-310476877601-us-east-1"
+            },
+            "attributes": {
+                "creationDate": "2024-03-08T16:38:20Z",
+                "mfaAuthenticated": "false"
+            }
+        },
+        "invokedBy": "cloudformation.amazonaws.com"
+    },
+    "eventTime": "2024-03-08T16:38:20Z",
+    "eventSource": "s3.amazonaws.com",
+    "eventName": "PutBucketPolicy",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "cloudformation.amazonaws.com",
+    "userAgent": "cloudformation.amazonaws.com",
+    "requestParameters": {
+        "bucketPolicy": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Condition": {
+                        "Bool": {
+                            "aws:SecureTransport": "false"
+                        }
+                    },
+                    "Action": "s3:*",
+                    "Resource": [
+                        "arn:aws:s3:::emc.ins.training10.use1.ce-alb-logging",
+                        "arn:aws:s3:::emc.ins.training10.use1.ce-alb-logging/*"
+                    ],
+                    "Effect": "Deny",
+                    "Principal": {
+                        "AWS": "*"
+                    }
+                },
+                {
+                    "Action": "s3:*",
+                    "Resource": [
+                        "arn:aws:s3:::emc.ins.training10.use1.ce-alb-logging",
+                        "arn:aws:s3:::emc.ins.training10.use1.ce-alb-logging/*"
+                    ],
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "elasticloadbalancing.amazonaws.com",
+                        "AWS": [
+                            "arn:aws:iam::127311923021:root",
+                            "arn:aws:iam::033677994240:root",
+                            "arn:aws:iam::797873946194:root"
+                        ]
+                    }
+                }
+            ]
+        },
+        "bucketName": "emc.ins.training10.use1.ce-alb-logging",
+        "Host": "s3.us-east-1.amazonaws.com",
+        "policy": ""
+    },
+    "responseElements": null,
+    "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "CipherSuite": "TLS_AES_128_GCM_SHA256",
+        "bytesTransferredIn": 598,
+        "AuthenticationMethod": "AuthHeader",
+        "x-amz-id-2": "1JRTJLh0AZk9yCpSIIDS917vu7mJLqzXMvZcvHyhnSYDlt+hGAVhpXquxz1vwvr7jPUhYcD8LBk=",
+        "bytesTransferredOut": 0
+    },
+    "requestID": "EG7E3VGHQ9DMJQV4",
+    "eventID": "5b6f3ca5-1a52-445a-b00c-2825f079e264",
+    "readOnly": false,
+    "resources": [
+        {
+            "accountId": "310476877601",
+            "type": "AWS::S3::Bucket",
+            "ARN": "arn:aws:s3:::emc.ins.training10.use1.ce-alb-logging"
+        }
+    ],
+    "eventType": "AwsApiCall",
+    "managementEvent": true,
+    "recipientAccountId": "310476877601",
+    "eventCategory": "Management"
+}
