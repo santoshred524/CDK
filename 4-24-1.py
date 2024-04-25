@@ -55,3 +55,44 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error: {str(e)}")
         raise e
+
+
+
+
+
+
+
+
+
+
+
+
+
+self.app_name = 'santoshtest-policytest'
+
+        emc_s3.Bucket(
+            self,
+            'Bucket',
+            bucket_name = self.app_name
+        )
+        yum_bucket.bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions = [
+                    's3:GetObject',
+                    's3:List*'
+                ],
+                effect = iam.Effect.ALLOW,
+                principals = [
+                    iam.AnyPrincipal()
+                ],
+                resources=[
+                    yum_bucket.bucket.bucket_arn,
+                    f"{yum_bucket.bucket.bucket_arn}/*"
+                ],
+                conditions= {
+                    "StringEquals":{
+                        "aws:PrincipalOrgID": "o-vwlfnq1mo3"
+                    }
+                }
+            )
+        )
