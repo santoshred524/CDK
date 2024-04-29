@@ -1,0 +1,332 @@
+from aws_cdk import (
+    Stack,
+    aws_events as event,
+    aws_logs as log,
+    aws_lambda as _lambda,
+    aws_events_targets as target,
+    aws_sns as sns,
+    aws_iam as iam,
+    aws_kms as kms,
+    aws_sns_subscriptions as subscription,
+    Duration,
+    Tags
+)
+
+from constructs import Construct
+from emc_cdk import (
+    emc_lambda
+)
+
+class CdkIAMTrustStack(Stack):
+    def __init__(self, scope: Construct, construct_id: str, stack_params: dict, tags: dict, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+
+        sns_topic = sns.Topic(self, "MySNSTopic", display_name="IAM Role Notifications", topic_name="IAM_Role_Notifications")
+        sns_topic.add_subscription(subscription.EmailSubscription(tags["email"]))
+
+        function = emc_lambda.Function(self,
+            "LambdaFuntion",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="iam_trust.lambda_handler",
+            function_name="iam-trust-policy",
+            code_location='lambda_code',
+            tracing=_lambda.Tracing.ACTIVE,
+            log_group=log.LogGroup(self, "LambdaLogGroup",
+                retention=log.RetentionDays.ONE_MONTH
+            ),
+            timeout=Duration.seconds(60)
+        )
+        
+
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "secretsmanager:GetResourcePolicy",
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:DescribeSecret",
+                    "secretsmanager:ListSecretVersionIds"
+                ],
+                resources=["arn:aws:secretsmanager:us-east-1:107872598712:secret:account_policy_lambda-GH2Jwz"],
+            )
+        )
+
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "kms:Decrypt"
+                ],
+                resources=["arn:aws:kms:us-east-1:107872598712:key/2e7acbc5-140b-4dbe-804e-3743fa73c021"]
+            )
+        )
+        
+        # Add permissions to the Lambda function
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "sns:Publish"
+                ],
+                resources=[sns_topic.topic_arn],
+            )
+        )
+
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ssm:GetParameter"
+                ],
+                resources=["*"]
+            )
+        )
+
+        # Create the CloudWatch Events rule
+        event_rule = event.Rule(
+            self,
+            "EventRule",
+            event_pattern= event.EventPattern(
+                source=["aws.iam"],
+                detail_type=["AWS API Call via CloudTrail"],
+                detail={
+                    "eventName": ["UpdateAssumeRolePolicy", "CreateRole"],
+                }
+                
+            )
+
+        )
+
+        # Add the Lambda function as the target for the rule
+        event_rule.add_target(target.LambdaFunction(function))
+
+
+        s3_policy_function = emc_lambda.Function(self,
+            "S3PolicyLambdaFuntion",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="s3_policy.lambda_handler",
+            function_name="s3-bucket-policy",
+            code_location='lambda_code',
+            tracing=_lambda.Tracing.ACTIVE,
+            log_group=log.LogGroup(self, "S3PolicyLambdaLogGroup",
+                retention=log.RetentionDays.ONE_MONTH
+            ),
+            timeout=Duration.seconds(60)
+        )
+
+        s3_policy_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "secretsmanager:GetResourcePolicy",
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:DescribeSecret",
+                    "secretsmanager:ListSecretVersionIds"
+                ],
+                resources=["arn:aws:secretsmanager:us-east-1:107872598712:secret:account_policy_lambda-GH2Jwz"],
+            )
+        )
+
+        s3_policy_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "kms:Decrypt"
+                ],
+                resources=["arn:aws:kms:us-east-1:107872598712:key/2e7acbc5-140b-4dbe-804e-3743fa73c021"]
+            )
+        )
+        # Add permissions to the Lambda function
+        s3_policy_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "sns:Publish"
+                ],
+                resources=[sns_topic.topic_arn],
+            )
+        )
+
+        s3_policy_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ssm:GetParameter"
+                ],
+                resources=["*"]
+            )
+        )
+
+        # Create the CloudWatch Events rule
+        event_rule = event.Rule(
+            self,
+            "S3EventRule",
+            event_pattern= event.EventPattern(
+                source=["aws.s3"],
+                detail_type=["AWS API Call via CloudTrail"],
+                detail={
+                    "eventName": ["PutBucketPolicy", "DeleteBucketPolicy"],
+                }
+                
+            )
+
+        )
+
+        # Add the Lambda function as the target for the rule
+        event_rule.add_target(target.LambdaFunction(s3_policy_function))
+        #If account is security create kms key
+        if stack_params["alias"] == "security":
+            #create kms key
+            key = kms.Key(self, "Key",
+                enable_key_rotation=True,
+                alias="account_trust_lambda"
+            )
+
+            #add org id to key policy
+            key.add_to_resource_policy(
+                iam.PolicyStatement(
+                    actions=["kms:Decrypt", "kms:DescribeKey"],
+                    effect=iam.Effect.ALLOW,
+                    resources=["*"],
+                    principals=[iam.AnyPrincipal()],
+                    conditions={
+                        "StringEquals": {
+                            "aws:PrincipalOrgID": "o-vwlfnq1mo3"
+                        }
+                    }
+                )
+            )
+
+
+# Create SNS Lambda function
+        sns_function = emc_lambda.Function(self,
+            "SNSLambdaFuntion",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="sns_trust.lambda_handler",
+            function_name="sns-trust-policy",
+            code_location='lambda_code',
+            tracing=_lambda.Tracing.ACTIVE,
+            log_group=log.LogGroup(self, "SNSLambdaLogGroup",
+                retention=log.RetentionDays.ONE_MONTH
+            ),
+            timeout=Duration.seconds(60)
+        )
+
+        sns_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "secretsmanager:GetResourcePolicy",
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:DescribeSecret",
+                    "secretsmanager:ListSecretVersionIds"
+                ],
+                resources=["arn:aws:secretsmanager:us-east-1:107872598712:secret:account_policy_lambda-GH2Jwz"],
+            )
+        )
+
+        sns_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "kms:Decrypt"
+                ],
+                resources=["arn:aws:kms:us-east-1:107872598712:key/2e7acbc5-140b-4dbe-804e-3743fa73c021"]
+            )
+        )
+        
+        # Add permissions to the Lambda function
+        sns_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "sns:Publish"
+                ],
+                resources=[sns_topic.topic_arn],
+            )
+        )
+
+        sns_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ssm:GetParameter"
+                ],
+                resources=["*"]
+            )
+        )
+
+        # Create the CloudWatch Events rule
+        sns_event_rule = event.Rule(
+            self,
+            "SNSEventRule",
+            event_pattern= event.EventPattern(
+                source=["aws.sns"],
+                detail_type=["AWS API Call via CloudTrail"],
+                detail={
+                    "eventName": ["SetTopicAttributes", "CreateTopic"],
+                }
+                
+            )
+
+        )
+
+        # Add the Lambda function as the target for the rule
+        sns_event_rule.add_target(target.LambdaFunction(sns_function))
+
+
+
+
+
+
+
+
+
+
+
+licyLambdaFuntionServiceRoleDefaultPolicyFE7AC48D)
+IAMTrustNotification | 11/27 | 8:28:40 AM | CREATE_IN_PROGRESS   | AWS::Lambda::Function   | LambdaFuntion (LambdaFuntionABB17BAE)
+IAMTrustNotification | 11/27 | 8:28:41 AM | CREATE_FAILED        | AWS::Lambda::Function   | LambdaFuntion (LambdaFuntionABB17BAE) training10-iam-trust-policy already exists in stack arn:aws:cloudformation:us-east-1:310476877601:stack/IAMTrustNotification/21986540-032a-11ef-aaa5-12a803a2d90bIAMTrustNotification | 11/27 | 8:28:41 AM | CREATE_IN_PROGRESS   | AWS::Lambda::Function   | S3PolicyLambdaFuntion (S3PolicyLambdaFuntionCA567F3C)
+IAMTrustNotification | 11/27 | 8:28:41 AM | CREATE_FAILED        | AWS::Lambda::Function   | S3PolicyLambdaFuntion (S3PolicyLambdaFuntionCA567F3C) Resource creation cancelled
+IAMTrustNotification | 11/27 | 8:28:42 AM | UPDATE_ROLLBACK_IN_P | AWS::CloudFormation::Stack | IAMTrustNotification The following resource(s) failed to create: [LambdaFuntionABB17BAE, S3PolicyLambdaFuntionCA567F3C].
+IAMTrustNotification | 10/27 | 8:28:44 AM | UPDATE_COMPLETE      | AWS::SNS::Topic         | MySNSTopic (MySNSTopicF6FB035B)
+IAMTrustNotification | 10/27 | 8:28:44 AM | UPDATE_IN_PROGRESS   | AWS::CDK::Metadata      | CDKMetadata/Default (CDKMetadata)
+IAMTrustNotification |  9/27 | 8:28:45 AM | UPDATE_COMPLETE      | AWS::SNS::Subscription  | MySNSTopic/techops.cloud.engineering@emcins.com (MySNSTopictechopscloudengineeringemcinscomD64150B5)
+IAMTrustNotification |  9/27 | 8:28:45 AM | UPDATE_IN_PROGRESS   | AWS::IAM::Policy        | SNSLambdaFuntion/ServiceRole/DefaultPolicy (SNSLambdaFuntionServiceRoleDefaultPolicy82D8BB92)
+IAMTrustNotification |  8/27 | 8:28:45 AM | UPDATE_COMPLETE      | AWS::CDK::Metadata      | CDKMetadata/Default (CDKMetadata)
+IAMTrustNotification |  7/27 | 8:29:01 AM | UPDATE_COMPLETE      | AWS::IAM::Policy        | SNSLambdaFuntion/ServiceRole/DefaultPolicy (SNSLambdaFuntionServiceRoleDefaultPolicy82D8BB92)
+IAMTrustNotification |  7/27 | 8:29:02 AM | UPDATE_IN_PROGRESS   | AWS::Lambda::Function   | SNSLambdaFuntion (SNSLambdaFuntion9CA84BEF) 
+IAMTrustNotification |  6/27 | 8:29:09 AM | UPDATE_COMPLETE      | AWS::Lambda::Function   | SNSLambdaFuntion (SNSLambdaFuntion9CA84BEF) 
+IAMTrustNotification |  7/27 | 8:29:11 AM | UPDATE_ROLLBACK_COMP | AWS::CloudFormation::Stack | IAMTrustNotification 
+IAMTrustNotification |  7/27 | 8:29:12 AM | DELETE_IN_PROGRESS   | AWS::SNS::Subscription  | MySNSTopic/techops.cloud.engineering@emcins.com (MySNSTopictechopscloudengineeringemcinscomD64150B5)
+IAMTrustNotification |  8/27 | 8:29:12 AM | DELETE_COMPLETE      | AWS::Lambda::Function   | LambdaFuntion (LambdaFuntionABB17BAE)
+IAMTrustNotification |  9/27 | 8:29:12 AM | DELETE_COMPLETE      | AWS::Lambda::Function   | S3PolicyLambdaFuntion (S3PolicyLambdaFuntionCA567F3C)
+IAMTrustNotification |  9/27 | 8:29:13 AM | DELETE_IN_PROGRESS   | AWS::SNS::Subscription  | MySNSTopic/techops.cloud.engineering@emcins.com (MySNSTopictechopscloudengineeringemcinscomD64150B5) Cannot delete a subscription which is pending confirmation. Detaching subscription from stack.    
+IAMTrustNotification |  9/27 | 8:29:13 AM | DELETE_IN_PROGRESS   | AWS::IAM::Policy        | LambdaFuntion/ServiceRole/DefaultPolicy (LambdaFuntionServiceRoleDefaultPolicy18CCB522)
+IAMTrustNotification |  9/27 | 8:29:13 AM | DELETE_IN_PROGRESS   | AWS::IAM::Policy        | S3PolicyLambdaFuntion/ServiceRole/DefaultPolicy (S3PolicyLambdaFuntionServiceRoleDefaultPolicyFE7AC48D)
+IAMTrustNotification |  9/27 | 8:29:13 AM | DELETE_SKIPPED       | AWS::Logs::LogGroup     | S3PolicyLambdaLogGroup (S3PolicyLambdaLogGroup5D1ABD6E)
+IAMTrustNotification |  9/27 | 8:29:13 AM | DELETE_SKIPPED       | AWS::Logs::LogGroup     | LambdaLogGroup (LambdaLogGroup2CA1C11F)
+IAMTrustNotification |  8/27 | 8:29:13 AM | DELETE_COMPLETE      | AWS::SNS::Subscription  | MySNSTopic/techops.cloud.engineering@emcins.com (MySNSTopictechopscloudengineeringemcinscomD64150B5)
+IAMTrustNotification |  7/27 | 8:29:13 AM | DELETE_COMPLETE      | AWS::IAM::Policy        | LambdaFuntion/ServiceRole/DefaultPolicy (LambdaFuntionServiceRoleDefaultPolicy18CCB522)
+IAMTrustNotification |  6/27 | 8:29:14 AM | DELETE_COMPLETE      | AWS::IAM::Policy        | S3PolicyLambdaFuntion/ServiceRole/DefaultPolicy (S3PolicyLambdaFuntionServiceRoleDefaultPolicyFE7AC48D)
+IAMTrustNotification |  6/27 | 8:29:14 AM | DELETE_IN_PROGRESS   | AWS::IAM::Role          | LambdaFuntion/ServiceRole (LambdaFuntionServiceRoleB773D78B)
+IAMTrustNotification |  6/27 | 8:29:14 AM | DELETE_IN_PROGRESS   | AWS::IAM::Role          | S3PolicyLambdaFuntion/ServiceRole (S3PolicyLambdaFuntionServiceRole9A14C54B)
+IAMTrustNotification |  6/27 | 8:29:14 AM | DELETE_IN_PROGRESS   | AWS::SNS::Topic         | MySNSTopic (MySNSTopicF6FB035B)
+IAMTrustNotification |  5/27 | 8:29:26 AM | DELETE_COMPLETE      | AWS::IAM::Role          | S3PolicyLambdaFuntion/ServiceRole (S3PolicyLambdaFuntionServiceRole9A14C54B)
+IAMTrustNotification |  4/27 | 8:29:26 AM | DELETE_COMPLETE      | AWS::IAM::Role          | LambdaFuntion/ServiceRole (LambdaFuntionServiceRoleB773D78B)
+IAMTrustNotification |  3/27 | 8:30:00 AM | DELETE_COMPLETE      | AWS::SNS::Topic         | MySNSTopic (MySNSTopicF6FB035B) 
+IAMTrustNotification |  4/27 | 8:30:00 AM | UPDATE_ROLLBACK_COMP | AWS::CloudFormation::Stack | IAMTrustNotification 
+
+Failed resources:
+IAMTrustNotification | 8:28:41 AM | CREATE_FAILED        | AWS::Lambda::Function   | LambdaFuntion (LambdaFuntionABB17BAE) training10-iam-trust-policy already exists in stack arn:aws:cloudformation:us-east-1:310476877601:stack/IAMTrustNotification/21986540-032a-11ef-aaa5-12a803a2d90b        
+
+ ❌  IAMTrustNotification failed: Error: The stack named IAMTrustNotification failed to deploy: UPDATE_ROLLBACK_COMPLETE: training10-iam-trust-poli
+cy already exists in stack arn:aws:cloudformation:us-east-1:310476877601:stack/IAMTrustNotification/21986540-032a-11ef-aaa5-12a803a2d90b
+    at FullCloudFormationDeployment.monitorDeployment (C:\Users\apex-1\AppData\Roaming\npm\node_modules\aws-cdk\lib\index.js:421:10708)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async Object.deployStack2 [as deployStack] (C:\Users\apex-1\AppData\Roaming\npm\node_modules\aws-cdk\lib\index.js:424:180618)
+    at async C:\Users\apex-1\AppData\Roaming\npm\node_modules\aws-cdk\lib\index.js:424:163866
+
+ ❌ Deployment failed: Error: The stack named IAMTrustNotification failed to deploy: UPDATE_ROLLBACK_COMPLETE: training10-iam-trust-policy already ❌ Deployment failed: Error: The stack named IAMTrustNotification failed to deploy: UPDATE_ROLLBACK_COMPLETE: training10-iam-trust-policy already ❌ Deployment failed: Error: The stack named IAMTrustNotification failed to deploy: UPDATE_ROLLBACK_COMPLETE: training10-iam-trust-policy already ❌ Deployment failed: Error: The stack named IAMTrustNotification failed to deploy: UPDATE_ROLLBACK_COMPLETE: training10-iam-trust-policy already ❌ Deployment failed: Error: The stack named IAMTrustNotification failed to deploy: UPDATE_ROLLBACK_COMPLETE: training10-iam-trust-policy already xists in stack arn:aws:cloudformation:us-east-1:310476877601:stack/IAMTrustNotification/21986540-032a-11ef-aaa5-12a803a2d90b
+exists in stack arn:aws:cloudformation:us-east-1:310476877601:stack/IAMTrustNotification/21986540-032a-11ef-aaa5-12a803a2d90b
+    at FullCloudFormationDeployment.monitorDeployment (C:\Users\apex-1\AppData\Roaming\npm\node_modules\aws-cdk\lib\index.js:421:10708)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async Object.deployStack2 [as deployStack] (C:\Users\apex-1\AppData\Roaming\npm\node_modules\aws-cdk\lib\index.js:424:180618)
+    at async C:\Users\apex-1\AppData\Roaming\npm\node_modules\aws-cdk\lib\index.js:424:163866
+
+The stack named IAMTrustNotification failed to deploy: UPDATE_ROLLBACK_COMPLETE: training10-iam-trust-policy already exists in stack arn:aws:cloudformation:us-east-1:310476877601:stack/IAMTrustNotification/21986540-032a-11ef-aaa5-12a803a2d90b
+
+
+
+
+
+
+        
