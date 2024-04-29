@@ -1,0 +1,102 @@
+import json
+import boto3
+from office365.runtime.auth.user_credential import UserCredential
+from office365.sharepoint.client_context import ClientContext
+import functions
+
+
+def lambda_handler(event, context):
+    try:
+        #Get Account Alias
+        account = functions.get_ssm_parameter("/global/account/alias")
+
+        if event['detail']['eventName'] == 'SetTopicAttributes':
+            topic_name = event['detail']['requestParameters']['topicArn'].split(":")[-1]
+            parsed_data = json.loads(event['detail']['requestParameters']['attributeValue']) 
+        else:
+            topic_name = event['detail']['requestParameters']['name']
+            parsed_data = json.loads(event['detail']['requestParameters']['attributes']['Policy'])
+            
+        if "SNS:AddPermission" not in parsed_data['Statement'][0]['Action'] and "SNS:RemovePermission" not in parsed_data['Statement'][0]['Action']:
+            print("Event does not need to be evaluated.")
+            return
+        else:
+            SNSMessage=f"SNS Topic '{topic_name}' trust policy updated with unauthorized account(s) in {account}"
+
+        functions.send_alert(event, parsed_data, SNSMessage)
+    
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise e
+
+
+
+import json
+import boto3
+
+def lambda_handler(event, context):
+    try:
+        
+        s3_client = boto3.client('s3')
+        sns_client = boto3.client('sns')
+        
+        
+        #Get Account Alias
+        ssm_client = boto3.client("ssm")
+        def get_ssm_parameter(parameter_name):
+            response = ssm_client.get_parameter(Name=parameter_name, WithDecryption=True)
+            parameter_info = response["Parameter"]
+            parameter_value = parameter_info["Value"]
+            return parameter_value
+        account = get_ssm_parameter("/global/account/alias")
+
+        #Get Account Id
+        sts_client = boto3.client('sts')
+        account_id = sts_client.get_caller_identity()["Account"]
+
+
+        # Define authorized account IDs
+        authorized_accounts = ['181541285741', '642282818489', '147483137759', '512761343058', '309492738658', '452933866978', '730558103591', '107872598712', '567820090735', '028544375379', '384267352821', '317773170705', '834975220471', '508522129891', '149834317114', '283274754567', '957488187883', '310476877601', '800184284482']
+
+        # Extract the bucket name and bucket policy from the CloudTrail event
+        if 'detail' in event and 'requestParameters' in event['detail']:
+            bucket_name = event['detail']['requestParameters'].get('bucketName', '')
+            bucket_policy = event['detail']['requestParameters'].get('bucketPolicy', {})
+
+            print(f"Scanning bucket policy for bucket: {bucket_name}")
+
+            # Initialize a list to collect unauthorized account findings
+            unauthorized_found = []
+
+            # Scan each statement in the bucket policy
+            for statement in bucket_policy.get('Statement', []):
+                principal = statement.get('Principal', {})
+                
+                if isinstance(principal, dict) and 'AWS' in principal:
+                    aws_accounts = principal['AWS']
+                    if not isinstance(aws_accounts, list):
+                        aws_accounts = [aws_accounts]  # Ensure aws_accounts is a list
+
+                    # Check each AWS account in the principal field
+                    for account in aws_accounts:
+                        account_id_extracted = account.split(':')[-1]
+                        if account_id_extracted not in authorized_accounts:
+                            unauthorized_found.append(account_id_extracted)
+                            print(f"Unauthorized account {account_id_extracted} detected in bucket policy.")
+
+            # Send notification if unauthorized accounts are found
+            if unauthorized_found:
+                sns_topic_arn = f"arn:aws:sns:{event['region']}:{account_id}:S3_Bucket_Policy_Notifications"
+                sns_client.publish(
+                    TopicArn=sns_topic_arn,
+                    Message=f"Unauthorized account(s) {unauthorized_found} detected in bucket policy of {bucket_name}."
+                )
+                print("Notification sent for unauthorized accounts found in bucket policy.")
+            else:
+                print("No unauthorized accounts found in bucket policy.")
+        else:
+            print("No bucket policy change detected or missing necessary event details.")
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise e
