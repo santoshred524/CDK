@@ -252,3 +252,14 @@ def check_unauthorized_access(bucket_policy, authorized_accounts):
                 if account_id_extracted not in authorized_accounts:
                     unauthorized_found.append(account_id_extracted)
     return unauthorized_found
+
+
+
+
+
+[ERROR] TypeError: string indices must be integers, not 'str'
+Traceback (most recent call last):
+  File "/var/task/s3_policy.py", line 22, in lambda_handler
+    functions.send_alert(event['region'], account_alias, message)
+  File "/var/task/functions.py", line 30, in send_alert
+    username = event['detail']['userIdentity']['arn']
