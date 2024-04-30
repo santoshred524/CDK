@@ -119,3 +119,63 @@ def check_unauthorized_access(bucket_policy):
                 if account_id_extracted not in authorized_accounts:
                     unauthorized_found.append(account_id_extracted)
     return unauthorized_found
+
+
+
+
+
+
+
+
+
+import json
+import boto3
+from office365.runtime.auth.user_credential import UserCredential
+from office365.sharepoint.client_context import ClientContext
+import functions
+import logging
+
+def lambda_handler(event, context):
+    try:
+        #Get Account Alias
+        account = functions.get_ssm_parameter("/global/account/alias")
+
+
+        # Extract bucket name and bucket policy from the CloudTrail event
+        bucket_name, bucket_policy = extract_policy_details(event)
+        
+        # Check for unauthorized account access
+        unauthorized_found = check_unauthorized_access(bucket_policy)
+
+        # Send notification if unauthorized accounts are found
+        if unauthorized_found:
+            message = (f"Unauthorized account(s) {unauthorized_found} detected in bucket policy "
+                       f"of {bucket_name} in account {account}.")
+            functions.send_alert(event['region'], account, message)
+        else:
+            logging.info("No unauthorized accounts found in bucket policy.")
+
+    except Exception as e:
+        logging.error(f"Error: {str(e)}")
+        raise
+
+def extract_policy_details(event):
+    """Extracts and returns bucket name and policy from the event."""
+    bucket_name = event.get('detail', {}).get('requestParameters', {}).get('bucketName', '')
+    bucket_policy = event.get('detail', {}).get('requestParameters', {}).get('bucketPolicy', {})
+    return bucket_name, bucket_policy
+
+def check_unauthorized_access(bucket_policy):
+    """Checks for unauthorized AWS accounts in the bucket policy."""
+    unauthorized_found = []
+    for statement in bucket_policy.get('Statement', []):
+        principal = statement.get('Principal', {})
+        if 'AWS' in principal:
+            aws_accounts = principal['AWS']
+            if isinstance(aws_accounts, str):
+                aws_accounts = [aws_accounts]
+            for account in aws_accounts:
+                account_id_extracted = account.split(':')[-2]
+                if account_id_extracted not in account:
+                    unauthorized_found.append(account_id_extracted)
+    return unauthorized_found
