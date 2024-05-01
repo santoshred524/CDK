@@ -41,7 +41,7 @@ def lambda_handler(event, context):
             bucket_policy = json.loads(bucket_policy)
 
         # Send notification if unauthorized accounts are found
-        send_alert(event, bucket_policy, f"Unauthorized access detected in {bucket_name} in account {account_alias}")
+        send_alert(event, parsed_data, f"Unauthorized access detected in {bucket_name} in account {account_alias}")
 
     except Exception as e:
         logging.error(f"Error: {str(e)}")
@@ -51,14 +51,16 @@ def extract_policy_details(event):
     """Extracts and returns bucket name and policy from the event."""
     try:
         bucket_name = event['detail']['requestParameters']['bucketName']
-        request_params = event['detail']['requestParameters']
-        if 'bucketPolicy' in request_params:
-            bucket_policy = request_params['bucketPolicy']
+        
+        # Accessing bucketPolicy 
+        if 'bucketPolicy' in event['detail']['requestParameters']:
+            bucket_policy = event['detail']['requestParameters']['bucketPolicy']
         else:
-            bucket_policy = None
             logging.error("No 'bucketPolicy' key found in event data")
-            # Handle the absence of bucketPolicy key as needed
+            return bucket_name, None
+        
     except KeyError as e:
         logging.error(f"Missing key in event data: {str(e)}")
         raise
+    
     return bucket_name, bucket_policy
