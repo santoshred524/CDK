@@ -7,3 +7,6 @@ aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, L
 
 
 aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, LoadBalancerArn, ListenerDescriptions[*].Listener.DefaultActions[0].FixedResponseConfig.ContentType]' --output table
+
+
+aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, LoadBalancerArn, ListenerDescriptions[*].Listener.DefaultActions[0].Certificates[0].CertificateArn]' --output table
