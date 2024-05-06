@@ -4,3 +4,6 @@ aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, L
 
 
 aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, LoadBalancerArn, LoadBalancerAttributes.SecurityGroups[?Key==`security_groups`].Value[0]]' --output table
+
+
+aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, LoadBalancerArn, ListenerDescriptions[*].Listener.DefaultActions[0].FixedResponseConfig.ContentType]' --output table
