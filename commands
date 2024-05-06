@@ -10,3 +10,31 @@ aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, L
 
 
 aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, LoadBalancerArn, ListenerDescriptions[*].Listener.DefaultActions[0].Certificates[0].CertificateArn]' --output table
+
+
+
+# Retrieve ALB ARNs
+ALB_ARNs=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[*].LoadBalancerArn' --output text)
+
+# Loop through each ALB ARN
+for arn in $ALB_ARNs; do
+    echo "Load Balancer ARN: $arn"
+    
+    # Retrieve Listener ARNs
+    Listener_ARNs=$(aws elbv2 describe-listeners --load-balancer-arn $arn --query 'Listeners[*].ListenerArn' --output text)
+    
+    # Loop through each Listener ARN
+    for listener_arn in $Listener_ARNs; do
+        echo "Listener ARN: $listener_arn"
+        
+        # Retrieve SSL certificate ARN
+        Certificate_ARN=$(aws elbv2 describe-listener-certificates --listener-arn $listener_arn --query 'Certificates[*].CertificateArn' --output text)
+        
+        # Retrieve Security Policy from SSL certificate
+        Security_Policy=$(aws acm describe-certificate --certificate-arn $Certificate_ARN --query 'Certificate.KeyAlgorithm' --output text)
+        
+        # Output results
+        echo "Security Policy: $Security_Policy"
+        echo "------------------------"
+    done
+done
