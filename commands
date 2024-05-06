@@ -1,3 +1,6 @@
 aws elbv2 describe-load-balancers --query 'LoadBalancers[*].LoadBalancerArn'
 aws elbv2 modify-load-balancer-attributes --load-balancer-arn arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/my-load-balancer/1234567890abcdef --attributes Key=security_policy,Value=ELBSecurityPolicy-TLS-1-2-2017-01
 aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, LoadBalancerArn, LoadBalancerAttributes.SecurityGroups[?Key==`security_policy`].Value | [0][0]]' --output table
+
+
+aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName, LoadBalancerArn, LoadBalancerAttributes.SecurityGroups[?Key==`security_groups`].Value[0]]' --output table
